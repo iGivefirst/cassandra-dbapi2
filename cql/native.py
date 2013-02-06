@@ -416,7 +416,7 @@ class ResultMessage(_MessageType):
 
     @classmethod
     def recv_results_prepared(cls, f):
-        queryid = read_int(f)
+        queryid = read_stringbin(f)
         colspecs = cls.recv_results_metadata(f)
         return (queryid, colspecs)
 
@@ -483,7 +483,7 @@ class ExecuteMessage(_MessageType):
     params = ('queryid', 'queryparams', 'consistencylevel',)
 
     def send_body(self, f):
-        write_int(f, self.queryid)
+        write_stringbin(f, self.queryid)
         write_short(f, len(self.queryparams))
         for param in self.queryparams:
             write_value(f, param)
@@ -613,6 +613,16 @@ def write_stringmultimap(f, strmmap):
         write_string(f, k)
         write_stringlist(f, v)
 
+def read_stringbin(f):
+    size = read_short(f)
+    contents = f.read(size)
+    return contents.encode('hex')
+    
+def write_stringbin(f, str):
+    decoded = str.decode('hex')
+    write_short(f, len(decoded))
+    f.write(decoded)
+    
 def read_value(f):
     size = read_int(f)
     if size < 0:
