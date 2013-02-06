@@ -23,7 +23,6 @@ from cql.cursor import Cursor, _VOID_DESCRIPTION, _COUNT_DESCRIPTION
 from cql.apivalues import ProgrammingError, OperationalError
 from cql.query import PreparedQuery, prepare_query, cql_quote_name
 import socket
-import itertools
 try:
     from cStringIO import StringIO
 except ImportError:
@@ -659,6 +658,26 @@ def write_inet(f, addrtuple):
     f.write(addrbytes)
     write_int(f, port)
 
+def ctzb(n):
+    if n == 0: return 127
+    if n & 0x1:
+        return 0
+    else:
+        c = 1
+        if n & 0xFFFFFFFFFFFFFFFF == 0:
+            n >>= 64; c += 64
+        if n & 0xFFFFFFFF == 0:
+            n >>= 32; c += 32
+        if n & 0xFFFF == 0:
+            n >>= 16; c += 16
+        if n & 0xFF == 0:
+            n >>= 8; c += 8
+        if n & 0xF == 0:
+            n >>= 4; c += 4
+        if n & 0x3 == 0:
+            n >>= 2; c += 2
+        c -= n & 0x1
+        return c
 
 class NativeCursor(Cursor):
     def prepare_query(self, query):
@@ -784,7 +803,7 @@ class NativeConnection(Connection):
     cursorclass = NativeCursor
 
     def __init__(self, *args, **kwargs):
-        self.make_reqid = itertools.count().next
+        self.reqid_slots = (1 << 128) - 1
         self.responses = {}
         self.waiting = {}
         self.conn_ready = False
@@ -792,6 +811,16 @@ class NativeConnection(Connection):
         self.event_watchers = {}
         Connection.__init__(self, *args, **kwargs)
 
+    def make_reqid(self):
+        if self.reqid_slots == 0:
+            raise cql.ProgrammingError("Unable to acquire a stream id")
+        slot = ctzb(self.reqid_slots)
+        self.reqid_slots &= ~(1 << slot)
+        return slot
+    
+    def release_reqid(self, reqid):
+        self.reqid_slots |= (1 << reqid)
+        
     def establish_connection(self):
         self.conn_ready = False
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -920,6 +949,8 @@ class NativeConnection(Connection):
             if None in waiting_for:
                 results[None] = newmsg
                 waiting_for.remove(None)
+            if newmsg.stream_id >= 0:
+                self.release_reqid(newmsg.stream_id)
         return results
 
     def wait_for_result(self, reqid):
