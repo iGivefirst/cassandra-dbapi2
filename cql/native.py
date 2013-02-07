@@ -1087,4 +1087,4 @@ class NativeConnection(Connection):
 
     def is_open(self):
         """Standard test for whether a Connection is open. Used by ConnectionPool. Note not currently using timeouts so not entirely reliable"""
-        return self.open_socket and (self.socketfd is not None) and (self.socketf is not None)
+        return self.open_socket and (self.sockfd is not None) and (self.socketf is not None)
